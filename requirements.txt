@@ -1,0 +1,13 @@
+python-telegram-bot
+python-dotenv
+pytesseract
+pdf2image
+opencv-python
+numpy
+easyocr
+paddlepaddle
+paddleocr
+concurrent-futures
+numpy==1.24.3
+pandas==1.5.3
+python-docx
