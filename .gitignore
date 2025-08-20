@@ -1,0 +1,7 @@
+
+.env
+config.py
+__pycache__/
+*.pyc
+venv/
+model-palace-445815-q2-8884d44f5ff9.json

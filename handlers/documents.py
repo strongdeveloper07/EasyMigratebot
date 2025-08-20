@@ -130,7 +130,7 @@ async def process_documents(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Определение обязательных документов и полей в зависимости от услуги
     if service_type == "Уведомление от работника иностранного гражданина":
         processing_map['патент'][3].append('inn') # Добавляем ИНН в обязательные для патента
-        processing_map['дмс'] = ('dms', PROMPT_DMS, parse_dms_fields, ['policy_number', 'dms_insurer_phone', 'dms_insurer_email'])
+        processing_map['дмс'] = ('dms', PROMPT_DMS, parse_dms_fields, ['dms_number', 'insurance_company', 'insurance_date'])
         processing_map['договор'] = ('contract', PROMPT_CONTRACT, parse_contract_fields, ['position', 'contract_date'])
     else: # Для других услуг
         processing_map['миграцион'] = ('migration', PROMPT_MIGRATION, parse_migration_fields, ['migration_card_number', 'migration_card_date'])

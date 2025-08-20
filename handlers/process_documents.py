@@ -9,6 +9,7 @@ from utils.gpt import extract_doc_fields_with_gpt
 from utils.parsers import parse_passport_fields, parse_migration_fields, parse_patent_fields, parse_dms_fields
 from datetime import datetime, timedelta
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,7 @@ async def process_documents(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_data['manual_fields'] = {}
     user_data['missing_fields'] = []
     
-    # 1. Обработка паспорта
+    # 1. Обработка паспорта (без использования ФИО — оно берётся только из патента)
     passport_processed = False
     for doc in documents:
         if 'паспорт' in doc['name'].lower() or 'passport' in doc['name'].lower():
@@ -39,27 +40,24 @@ async def process_documents(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     raw_text = gcv_ocr(png_pages[0]) if png_pages else ""
                 else:
                     raw_text = gcv_ocr(doc['bytes'])
-                
                 if raw_text:
                     fields_raw = await extract_doc_fields_with_gpt(raw_text, PROMPT_PASSPORT)
                     passport_data = parse_passport_fields(fields_raw)
-                    
-                    required_fields = ['fio', 'fio_latin', 'birthdate', 'passport_number']
+                    # Удаляем ФИО, чтобы гарантировать использование патента
+                    passport_data.pop('fio', None)
+                    required_fields = ['birthdate', 'passport_number']  # fio убран
                     for field in required_fields:
-                        if not passport_data.get(field) or passport_data.get(field) == 'Не найдено':
+                        if not passport_data.get(field) or passport_data.get(field) in ['Не найдено', 'не найден', 'не указано', 'нет', 'n/a', 'none', 'null', '-', '—']:
                             user_data['missing_fields'].append(('passport', field))
-                    
                     user_data['passport_fields'] = passport_data
                     passport_processed = True
                     break
             except Exception as e:
                 logger.error(f"Ошибка обработки паспорта: {e}", exc_info=True)
-    
     if not passport_processed:
         await update.message.reply_text("❌ Не удалось обработать паспорт. Введите данные вручную.")
         user_data['missing_fields'].extend([
-            ('passport', 'fio'),
-            ('passport', 'fio_latin'),
+            # fio не запрашиваем на этапе паспорта
             ('passport', 'birthdate'),
             ('passport', 'passport_number')
         ])
@@ -83,7 +81,7 @@ async def process_documents(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         
                         required_fields = ['migration_card_number', 'migration_card_date']
                         for field in required_fields:
-                            if not migration_data.get(field) or migration_data.get(field) == 'Не найдено':
+                            if not migration_data.get(field) or migration_data.get(field) in ['Не найдено', 'не найден', 'не указано', 'нет', 'n/a', 'none', 'null', '-', '—']:
                                 user_data['missing_fields'].append(('migration', field))
                         
                         user_data['migration_fields'] = migration_data
@@ -99,7 +97,7 @@ async def process_documents(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ('migration', 'migration_card_date')
             ])
     
-    # 3. Обработка патента
+    # 3. Обработка патента (fio обязательно тут)
     patent_processed = False
     for doc in documents:
         if 'патент' in doc['name'].lower() or 'patent' in doc['name'].lower():
@@ -110,49 +108,47 @@ async def process_documents(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     raw_text = gcv_ocr_multiple(png_pages)
                 else:
                     raw_text = gcv_ocr(doc['bytes'])
-                
                 if raw_text:
                     fields_raw = await extract_doc_fields_with_gpt(raw_text, PROMPT_PATENT)
                     patent_data = parse_patent_fields(fields_raw)
-                    
+
                     passport_fields = user_data['passport_fields']
-                    if patent_data.get('fio') and passport_fields.get('fio'):
-                        if patent_data['fio'] != passport_fields['fio']:
-                            passport_fields['fio'] = patent_data['fio']
-                    
-                    required_fields = ['patent_number', 'patent_date', 'patent_blank']
+                    # ФИО используем ТОЛЬКО из патента, не копируем в passport_fields
+                    if patent_data.get('fio'):
+                        patent_data['fio'] = patent_data['fio'].upper()
+                    # Обязательные поля: fio теперь проверяется здесь
                     if service_type == "Уведомление от работника иностранного гражданина":
-                        required_fields.append('inn')
-                    
+                        required_fields = ['fio', 'patent_number', 'patent_date', 'inn']
+                    else:
+                        required_fields = ['fio', 'patent_number', 'patent_date', 'patent_blank']
                     for field in required_fields:
-                        if not patent_data.get(field) or patent_data.get(field) == 'Не найдено':
+                        if not patent_data.get(field) or patent_data.get(field) in ['Не найдено', 'не найден', 'не указано', 'нет', 'n/a', 'none', 'null', '-', '—']:
                             user_data['missing_fields'].append(('patent', field))
-                    
                     if patent_data.get('patent_date'):
                         try:
                             issue_date = datetime.strptime(patent_data['patent_date'], '%d.%m.%Y')
-                            expiry_date = (issue_date + timedelta(days=365)).strftime('%d.%m.%Y')
-                            patent_data['patent_until'] = expiry_date
+                            patent_data['patent_until'] = (issue_date + timedelta(days=365)).strftime('%d.%m.%Y')
                         except:
-                            patent_data['patent_until'] = "Не определено"
-                    
+                            patent_data['patent_until'] = 'Не определено'
                     user_data['patent_fields'] = patent_data
                     patent_processed = True
                     break
             except Exception as e:
                 logger.error(f"Ошибка обработки патента: {e}", exc_info=True)
-    
     if not patent_processed:
         await update.message.reply_text("❌ Не удалось обработать патент. Введите данные вручную.")
-        missing_fields = [
-            ('patent', 'patent_number'),
-            ('patent', 'patent_date'),
-            ('patent', 'patent_blank')
-        ]
         if service_type == "Уведомление от работника иностранного гражданина":
-            missing_fields.append(('patent', 'inn'))
-        user_data['missing_fields'].extend(missing_fields)
-    
+            user_data['missing_fields'].extend([
+                ('patent', 'patent_number'),
+                ('patent', 'patent_date'),
+                ('patent', 'inn')
+            ])
+        else:
+            user_data['missing_fields'].extend([
+                ('patent', 'patent_number'),
+                ('patent', 'patent_date'),
+                ('patent', 'patent_blank')
+            ])
     # 4. Обработка ДМС
     dms_processed = False
     if service_type == "Уведомление от работника иностранного гражданина":
@@ -170,9 +166,9 @@ async def process_documents(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         fields_raw = await extract_doc_fields_with_gpt(raw_text, PROMPT_DMS)
                         dms_data = parse_dms_fields(fields_raw)
                         
-                        required_fields = ['policy_number']
+                        required_fields = ['dms_number', 'insurance_expiry', 'insurance_date']
                         for field in required_fields:
-                            if not dms_data.get(field) or dms_data.get(field) == 'Не найдено':
+                            if not dms_data.get(field) or dms_data.get(field) in ['Не найдено', 'не найден', 'не указано', 'нет', 'n/a', 'none', 'null', '-', '—']:
                                 user_data['missing_fields'].append(('dms', field))
                         
                         user_data['dms_fields'] = dms_data
@@ -184,7 +180,9 @@ async def process_documents(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not dms_processed:
             await update.message.reply_text("❌ Не удалось обработать полис ДМС. Введите данные вручную.")
             user_data['missing_fields'].extend([
-                ('dms', 'policy_number'),
+                ('dms', 'dms_number'),
+                ('dms', 'insurance_expiry'),
+                ('dms', 'insurance_date'),
             ])
     
     if user_data['missing_fields']:

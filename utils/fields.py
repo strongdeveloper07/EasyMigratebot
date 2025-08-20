@@ -2,7 +2,6 @@ def get_field_description(doc_type: str, field_name: str) -> str:
     descriptions = {
         'passport': {
             'fio': "ФИО сотрудника (русскими буквами, ЗАГЛАВНЫМИ)",
-            'fio_latin': "ФИО сотрудника (латиницей, ЗАГЛАВНЫМИ)",
             'birthdate': "дату рождения (в формате ДД.ММ.ГГГГ)",
             'birth_place': "место рождения",
             'passport_series': "серию паспорта",
@@ -29,17 +28,18 @@ def get_field_description(doc_type: str, field_name: str) -> str:
             'inn': "ИНН сотрудника",
         },
         'dms': {
-            'policy_number': "номер полиса ДМС",
-            'policy_series': "серию полиса ДМС",
-            'start_date': "дату начала действия",
-            'end_date': "дату окончания действия",
-            'dms_insurer_phone': "контактный телефон страховщика",
-            'dms_insurer_email': "адрес электронной почты страховщика",
+            'dms_number': "номер полиса ДМС (полностью)",
+            'insurance_date': "дату выдачи страховки",
+            'insurance_expiry': "email для пункта 10",
+            'insurance_company': "название страховой организации",
         },
         'contract': {
             'contract_number': "номер трудового договора",
             'contract_date': "дату заключения трудового договора (в формате ДД.ММ.ГГГГ)",
             'position': "должность сотрудника",
+            'work_address': "рабочий адрес",
+            'contact_phone': "контактный телефон",
+            'contact_email': "контактную электронную почту",
         }
     }
     return descriptions.get(doc_type, {}).get(field_name, f'значение для "{field_name}"')
